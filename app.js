@@ -57,9 +57,10 @@
   var MAX_GARMENT_DIM = 900;
   var THUMB_DIM = 180;
 
-  var state = {
+ var state = {
     base: null,
     garments: [],
+    outfits: [],
     activeId: null,
     tool: 'move',
     brush: 60,
@@ -69,6 +70,7 @@
     stageH: 1200,
     hover: null,
     drag: null,
+    view: { s: 1, tx: 0, ty: 0 },
     pointers: new Map()
   };
 
@@ -84,11 +86,12 @@
   function openDB() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise(function (resolve, reject) {
-      var req = indexedDB.open(DB_NAME, 1);
+      var req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = function () {
         var db = req.result;
         if (!db.objectStoreNames.contains('garments')) db.createObjectStore('garments', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('outfits')) db.createObjectStore('outfits', { keyPath: 'id' });
       };
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { reject(req.error); };
@@ -185,6 +188,32 @@
     });
   }
 
+  // 带透明通道的衣服图，先把四周的透明边距裁掉。
+  // 这样 placeByDefault 按宽度定的尺寸才准，落点不会偏小或发飘。
+  function trimTransparent(canvas) {
+    var w = canvas.width;
+    var h = canvas.height;
+    var data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    var minX = w, minY = h, maxX = -1, maxY = -1;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (data[(y * w + x) * 4 + 3] > 8) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return canvas;
+    if (minX === 0 && minY === 0 && maxX === w - 1 && maxY === h - 1) return canvas;
+    var out = document.createElement('canvas');
+    out.width = maxX - minX + 1;
+    out.height = maxY - minY + 1;
+    out.getContext('2d').drawImage(canvas, -minX, -minY);
+    return out;
+  }
+
   function blobToDataURL(blob) {
     return new Promise(function (resolve, reject) {
       var fr = new FileReader();
@@ -233,6 +262,7 @@
       opacity: rec.opacity == null ? 1 : rec.opacity,
       worn: !!rec.worn,
       order: rec.order || 0,
+      zBias: rec.zBias || 0,
       img: null,
       mask: null,
       canvas: null,
@@ -260,7 +290,8 @@
       flip: g.flip,
       opacity: g.opacity,
       worn: g.worn,
-      order: g.order
+      order: g.order,
+      zBias: g.zBias || 0
     };
   }
 
@@ -335,8 +366,8 @@
   function wornSorted() {
     return state.garments.filter(function (g) { return g.worn && g.img; })
       .sort(function (a, b) {
-        var za = catOf(a.category).z;
-        var zb = catOf(b.category).z;
+        var za = catOf(a.category).z + (a.zBias || 0);
+        var zb = catOf(b.category).z + (b.zBias || 0);
         if (za !== zb) return za - zb;
         return a.order - b.order;
       });
@@ -490,6 +521,8 @@
     sctx.clearRect(0, 0, state.stageW, state.stageH);
     sctx.imageSmoothingEnabled = true;
     sctx.imageSmoothingQuality = 'high';
+    sctx.save();
+    sctx.setTransform(state.view.s, 0, 0, state.view.s, state.view.tx, state.view.ty);
 
     if (state.base && state.base.canvas) {
       sctx.drawImage(state.base.canvas, 0, 0, state.stageW, state.stageH);
@@ -507,16 +540,53 @@
     var active = activeGarment();
     if (active && active.worn && active.img && state.tool === 'move') drawSelection(sctx, active);
     drawBrushCursor(sctx);
+    sctx.restore();
   }
 
   /* ---------- 命中与笔刷 ---------- */
 
   function toStage(e) {
     var rect = stage.getBoundingClientRect();
+    var cx = (e.clientX - rect.left) * state.stageW / rect.width;
+    var cy = (e.clientY - rect.top) * state.stageH / rect.height;
     return {
-      x: (e.clientX - rect.left) * state.stageW / rect.width,
-      y: (e.clientY - rect.top) * state.stageH / rect.height
+      x: (cx - state.view.tx) / state.view.s,
+      y: (cy - state.view.ty) / state.view.s,
+      cx: cx,
+      cy: cy
     };
+  }
+
+  function clampView() {
+    var v = state.view;
+    if (v.s <= 1.001) {
+      v.s = 1;
+      v.tx = 0;
+      v.ty = 0;
+      return;
+    }
+    v.tx = clamp(v.tx, state.stageW - state.stageW * v.s, 0);
+    v.ty = clamp(v.ty, state.stageH - state.stageH * v.s, 0);
+  }
+
+  function zoomBy(factor, cx, cy) {
+    var v = state.view;
+    var s2 = clamp(v.s * factor, 1, 4);
+    var k = s2 / v.s;
+    v.tx = cx - (cx - v.tx) * k;
+    v.ty = cy - (cy - v.ty) * k;
+    v.s = s2;
+    clampView();
+    syncTools();
+    requestRender();
+  }
+
+  function resetView() {
+    state.view.s = 1;
+    state.view.tx = 0;
+    state.view.ty = 0;
+    syncTools();
+    requestRender();
   }
 
   function hitTest(p, needPixel) {
@@ -621,6 +691,8 @@
           state.drag = { mode: state.tool, id: target.id, last: p };
           paintStroke(target, p, p);
           requestRender();
+        } else if (state.view.s > 1) {
+          state.drag = { mode: 'pan', startX: p.cx, startY: p.cy, tx: state.view.tx, ty: state.view.ty };
         }
         return;
       }
@@ -636,9 +708,23 @@
       return;
     }
 
-    if (state.pointers.size === 2 && active) {
+    if (state.pointers.size === 2) {
       var pts = pointerList();
+      var midC = { x: (pts[0].cx + pts[1].cx) / 2, y: (pts[0].cy + pts[1].cy) / 2 };
       var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      if (state.tool === 'erase' || state.tool === 'restore') {
+        state.drag = {
+          mode: 'zoom',
+          startDist: Math.max(1, Math.hypot(pts[1].cx - pts[0].cx, pts[1].cy - pts[0].cy)),
+          startS: state.view.s,
+          anchor: {
+            x: (midC.x - state.view.tx) / state.view.s,
+            y: (midC.y - state.view.ty) / state.view.s
+          }
+        };
+        return;
+      }
+      if (!active) return;
       state.drag = {
         mode: 'pinch',
         id: active.id,
@@ -661,6 +747,30 @@
       requestRender();
       return;
     }
+
+    if (drag.mode === 'pan') {
+      state.view.tx = drag.tx + (p.cx - drag.startX);
+      state.view.ty = drag.ty + (p.cy - drag.startY);
+      clampView();
+      requestRender();
+      return;
+    }
+
+    if (drag.mode === 'zoom') {
+      var zpts = pointerList();
+      if (zpts.length < 2) return;
+      var zmid = { x: (zpts[0].cx + zpts[1].cx) / 2, y: (zpts[0].cy + zpts[1].cy) / 2 };
+      var zd = Math.max(1, Math.hypot(zpts[1].cx - zpts[0].cx, zpts[1].cy - zpts[0].cy));
+      var zs = clamp(drag.startS * zd / drag.startDist, 1, 4);
+      state.view.s = zs;
+      state.view.tx = zmid.x - drag.anchor.x * zs;
+      state.view.ty = zmid.y - drag.anchor.y * zs;
+      clampView();
+      syncTools();
+      requestRender();
+      return;
+    }
+
     var g = byId(drag.id);
     if (!g) return;
 
@@ -740,7 +850,8 @@
     var g = activeGarment();
     var has = !!(g && g.worn);
     $('adjustName').textContent = has ? (g.name + ' · ' + catOf(g.category).label) : '没有选中衣服';
-    ['scale', 'rot', 'opacity', 'btnFlip', 'btnUnwear', 'btnDelete', 'catSelect'].forEach(function (id) {
+    ['scale', 'rot', 'opacity', 'btnFlip', 'btnUnwear', 'btnDelete', 'catSelect',
+      'btnSendBack', 'btnBringFront', 'garmentName'].forEach(function (id) {
       $(id).disabled = !g;
     });
     if (!g) {
@@ -759,6 +870,7 @@
     $('opacityVal').textContent = Math.round(g.opacity * 100) + '%';
     $('catSelect').value = g.category;
     $('btnUnwear').disabled = !g.worn;
+    if (document.activeElement !== $('garmentName')) $('garmentName').value = g.name;
   }
 
   function syncTools() {
@@ -769,6 +881,7 @@
     $('tol').disabled = !g || !g.key;
     $('btnPick').classList.toggle('is-on', state.picking);
     $('brushVal').textContent = state.brush;
+    $('zoomVal').textContent = Math.round(state.view.s * 100) + '%';
     $('tolVal').textContent = g ? g.tol : 40;
     if (g) $('tol').value = g.tol;
   }
@@ -917,8 +1030,9 @@
 
   async function exportBackup() {
     var recs = await dbAll('garments');
+    var outfits = await dbAll('outfits');
     var base = await dbGet('meta', 'base');
-    var out = { v: 1, exportedAt: new Date().toISOString(), base: null, garments: [] };
+    var out = { v: 2, exportedAt: new Date().toISOString(), base: null, garments: [], outfits: outfits };
     if (base && base.blob) {
       out.base = { name: base.name, data: await blobToDataURL(base.blob) };
     }
@@ -946,6 +1060,8 @@
 
     var existing = await dbAll('garments');
     for (var i = 0; i < existing.length; i++) await dbRemove('garments', existing[i].id);
+    var oldOutfits = await dbAll('outfits');
+    for (var k = 0; k < oldOutfits.length; k++) await dbRemove('outfits', oldOutfits[k].id);
     await dbRemove('meta', 'base');
 
     for (var j = 0; j < data.garments.length; j++) {
@@ -967,6 +1083,12 @@
     }
     if (data.base && data.base.data) {
       await dbPut('meta', { key: 'base', name: data.base.name || '立绘', blob: dataURLToBlob(data.base.data) });
+    }
+    if (Array.isArray(data.outfits)) {
+      for (var m = 0; m < data.outfits.length; m++) {
+        var o = data.outfits[m];
+        if (o && o.id && Array.isArray(o.ids)) await dbPut('outfits', o);
+      }
     }
     await boot(true);
   }
@@ -994,7 +1116,15 @@
     for (var i = 0; i < files.length; i++) {
       try {
         var file = files[i];
-        var canvas = await blobToCanvas(file, MAX_GARMENT_DIM);
+        var raw = await blobToCanvas(file, MAX_GARMENT_DIM);
+        var canvas = trimTransparent(raw);
+        // 真裁掉透明边距时，把裁过的图存进库，保证尺寸和图片来源一致；
+        // 没裁掉（普通照片）就保留原文件，免得重新编码成体积更大的 PNG。
+        var stored = file;
+        if (canvas !== raw) {
+          var cut = await canvasToBlob(canvas, 'image/png');
+          if (cut) stored = cut;
+        }
         var thumbCanvas = document.createElement('canvas');
         var k = Math.min(THUMB_DIM / canvas.width, THUMB_DIM / canvas.height, 1);
         thumbCanvas.width = Math.max(1, Math.round(canvas.width * k));
@@ -1002,11 +1132,14 @@
         thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
         var thumbBlob = await canvasToBlob(thumbCanvas, 'image/jpeg', 0.82);
 
+        var catId = state.filter === 'all' ? 'top' : state.filter;
         var g = runtimeFrom({
           id: 'g' + Date.now() + '_' + i,
-          name: cleanName(file.name),
-          category: state.filter === 'all' ? 'top' : state.filter,
-          blob: file,
+          name: catOf(catId).label + ' ' + (state.garments.filter(function (x) {
+            return x.category === catId;
+          }).length + 1),
+          category: catId,
+          blob: stored,
           thumb: thumbBlob,
           key: null,
           tol: 40,
@@ -1057,9 +1190,144 @@
     }, 'image/png');
   }
 
+  /* ---------- 搭配与图层 ---------- */
+
+  function renderOutfits() {
+    var list = $('outfitList');
+    list.innerHTML = '';
+    state.outfits.forEach(function (rec) {
+      var chip = document.createElement('span');
+      chip.className = 'outfit-chip';
+      var label = document.createElement('span');
+      label.textContent = rec.name;
+      label.addEventListener('click', function () { applyOutfit(rec); });
+      chip.appendChild(label);
+      var del = document.createElement('button');
+      del.className = 'icon-btn';
+      del.setAttribute('aria-label', '删除这套搭配');
+      del.innerHTML = iconSvg('x');
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        deleteOutfit(rec);
+      });
+      chip.appendChild(del);
+      list.appendChild(chip);
+    });
+  }
+
+  async function setWornSet(keep) {
+    for (var i = 0; i < state.garments.length; i++) {
+      var g = state.garments[i];
+      var want = !!keep[g.id];
+      if (want === g.worn) continue;
+      if (want) {
+        g.worn = true;
+        await ensureLoaded(g);
+        if (!g.x && !g.y) placeByDefault(g);
+      } else {
+        g.worn = false;
+        unload(g);
+      }
+      persist(g);
+    }
+    state.activeId = null;
+    renderWardrobe();
+    syncAdjust();
+    requestRender();
+  }
+
+  function applyOutfit(rec) {
+    var keep = {};
+    rec.ids.forEach(function (id) { keep[id] = true; });
+    setWornSet(keep).catch(function (err) { console.warn(err); });
+  }
+
+  async function saveOutfit() {
+    var ids = state.garments.filter(function (g) { return g.worn; })
+      .map(function (g) { return g.id; });
+    if (!ids.length) {
+      window.alert('先穿几件再存这套');
+      return;
+    }
+    var fallback = '搭配 ' + (state.outfits.length + 1);
+    var name = window.prompt('给这套起个名字', fallback);
+    if (name === null) return;
+    name = String(name).trim().slice(0, 12) || fallback;
+    var rec = { id: 'o' + Date.now(), name: name, ids: ids };
+    state.outfits.push(rec);
+    await dbPut('outfits', rec);
+    renderOutfits();
+  }
+
+  async function deleteOutfit(rec) {
+    state.outfits = state.outfits.filter(function (o) { return o.id !== rec.id; });
+    await dbRemove('outfits', rec.id);
+    renderOutfits();
+  }
+
+  function randomLook() {
+    if (!state.garments.length) {
+      window.alert('衣橱还是空的');
+      return;
+    }
+    var byCat = {};
+    state.garments.forEach(function (g) {
+      (byCat[g.category] = byCat[g.category] || []).push(g);
+    });
+    function pick(cat) {
+      var arr = byCat[cat] || [];
+      return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+    }
+    function has(cat) { return (byCat[cat] || []).length > 0; }
+    var useDress = has('dress') && (!(has('top') && has('bottom')) || Math.random() < 0.35);
+    var chosen = [];
+    if (useDress) chosen.push(pick('dress'));
+    else {
+      chosen.push(pick('top'));
+      chosen.push(pick('bottom'));
+    }
+    if (Math.random() < 0.5) chosen.push(pick('outer'));
+    if (Math.random() < 0.7) chosen.push(pick('shoes'));
+    if (Math.random() < 0.4) chosen.push(pick('bag'));
+    if (Math.random() < 0.3) chosen.push(pick('acc'));
+    var keep = {};
+    chosen.forEach(function (g) { if (g) keep[g.id] = true; });
+    setWornSet(keep).catch(function (err) { console.warn(err); });
+  }
+
+  function nudgeZ(delta) {
+    var g = activeGarment();
+    if (!g) return;
+    g.zBias = clamp((g.zBias || 0) + delta, -30, 30);
+    persist(g);
+    requestRender();
+  }
+
   /* ---------- 控件绑定 ---------- */
 
   $('btnSave').addEventListener('click', saveLook);
+  $('btnZoomIn').addEventListener('click', function () { zoomBy(1.5, state.stageW / 2, state.stageH / 2); });
+  $('btnZoomOut').addEventListener('click', function () { zoomBy(1 / 1.5, state.stageW / 2, state.stageH / 2); });
+  $('btnZoomReset').addEventListener('click', resetView);
+  $('btnBringFront').addEventListener('click', function () { nudgeZ(1); });
+  $('btnSendBack').addEventListener('click', function () { nudgeZ(-1); });
+  $('btnRandom').addEventListener('click', randomLook);
+  $('btnSaveOutfit').addEventListener('click', function () {
+    saveOutfit().catch(function (err) { console.warn(err); });
+  });
+  $('garmentName').addEventListener('change', function () {
+    var g = activeGarment();
+    if (!g) return;
+    var v = $('garmentName').value.trim().slice(0, 20);
+    if (!v) {
+      $('garmentName').value = g.name;
+      return;
+    }
+    g.name = v;
+    persist(g);
+    renderWardrobe();
+    syncAdjust();
+  });
   $('btnAddClothes').addEventListener('click', function () { $('inputClothes').click(); });
   $('inputClothes').addEventListener('change', function (e) {
     addClothes(e.target.files);
@@ -1104,6 +1372,7 @@
       Array.prototype.forEach.call(document.querySelectorAll('#toolSeg .seg-btn'), function (b) {
         b.classList.toggle('is-on', b === btn);
       });
+      if (state.tool === 'move') resetView();
       syncTools();
       requestRender();
     });
@@ -1222,6 +1491,7 @@
   async function boot(isReload) {
     var recs = await dbAll('garments');
     var baseRec = await dbGet('meta', 'base');
+    state.outfits = await dbAll('outfits');
 
     state.garments.forEach(function (g) { if (g.thumbUrl) URL.revokeObjectURL(g.thumbUrl); });
     state.garments = recs.map(runtimeFrom);
@@ -1249,6 +1519,7 @@
     updateBrandSub();
     renderTabs();
     renderWardrobe();
+    renderOutfits();
     syncAdjust();
     syncTools();
     requestRender();
@@ -1258,4 +1529,8 @@
     console.warn(err);
     requestRender();
   });
+
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('sw.js').catch(function (err) { console.warn(err); });
+  }
 })();

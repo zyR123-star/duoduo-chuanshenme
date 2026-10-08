@@ -49,6 +49,11 @@
   </header>
   <div class="cat-tabs" id="catTabs"></div>
   <div class="sheet-body">
+    <div class="row">
+      <button class="btn btn-wide" id="btnRandom"><span class="ico" data-icon="sparkles"></span>随机搭一套</button>
+      <button class="btn btn-wide" id="btnSaveOutfit"><span class="ico" data-icon="check"></span>存这套</button>
+    </div>
+    <div class="outfit-list" id="outfitList"></div>
     <p class="meta" id="wardrobeEmpty">还没有衣服，先导入</p>
     <div class="grid" id="wardrobeGrid"></div>
   </div>
@@ -64,12 +69,17 @@
   </header>
   <div class="sheet-body">
     <p class="meta" id="adjustName">没有选中衣服</p>
+    <label class="field"><span>名字</span><input type="text" id="garmentName" maxlength="20" placeholder="给这件衣服起个名" /></label>
     <label class="field"><span>大小 <b id="scaleVal">—</b></span><input type="range" id="scale" min="5" max="400" step="1" value="100" /></label>
     <label class="field"><span>转动 <b id="rotVal">—</b></span><input type="range" id="rot" min="-180" max="180" step="1" value="0" /></label>
     <label class="field"><span>透明度 <b id="opacityVal">—</b></span><input type="range" id="opacity" min="5" max="100" step="1" value="100" /></label>
     <div class="row">
       <button class="btn btn-wide" id="btnFlip"><span class="ico" data-icon="flip"></span>左右翻转</button>
       <button class="btn btn-wide" id="btnUnwear"><span class="ico" data-icon="hanger"></span>脱下来</button>
+    </div>
+    <div class="row">
+      <button class="btn btn-wide" id="btnSendBack">往后压一层</button>
+      <button class="btn btn-wide" id="btnBringFront">往前挪一层</button>
     </div>
     <label class="field"><span>归到哪一类</span><select id="catSelect"></select></label>
     <button class="btn btn-danger btn-wide" id="btnDelete"><span class="ico" data-icon="trash"></span>从衣橱删除</button>
@@ -88,6 +98,12 @@
       <button class="seg-btn" data-tool="restore">补回</button>
     </div>
     <label class="field" id="brushField"><span>笔刷 <b id="brushVal">60</b></span><input type="range" id="brush" min="8" max="240" step="2" value="60" /></label>
+    <div class="row zoom-row">
+      <button class="btn" id="btnZoomOut" aria-label="缩小">－</button>
+      <span class="meta" id="zoomVal">100%</span>
+      <button class="btn" id="btnZoomIn" aria-label="放大">＋</button>
+      <button class="btn" id="btnZoomReset">复位</button>
+    </div>
     <div class="row">
       <button class="btn btn-wide" id="btnPick"><span class="ico" data-icon="pipette"></span>吸取底色</button>
       <button class="btn btn-wide" id="btnKeyClear"><span class="ico" data-icon="rotate-ccw"></span>还原原图</button>
