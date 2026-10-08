@@ -32,15 +32,22 @@
 
   /* ---------- 品类：决定默认位置和前后顺序 ---------- */
 
+  // w 是衣服宽度占舞台宽度的比例，y 是落点占舞台高度的比例。
+  // 这组数字按最终立绘（1344x1792）用中轴亮度实测校准：
+  //   T 恤 0.208-0.382、短裤到 0.509、膝 0.695、踝 0.90、肩宽占画面宽 0.28。
+  // 换立绘时这几个值要跟着重量。
   var CATS = [
-    { id: 'top', label: '上装', z: 20, w: 0.48, y: 0.37 },
-    { id: 'bottom', label: '下装', z: 10, w: 0.42, y: 0.63 },
-    { id: 'dress', label: '裙装', z: 12, w: 0.58, y: 0.53 },
-    { id: 'outer', label: '外套', z: 30, w: 0.56, y: 0.38 },
-    { id: 'shoes', label: '鞋', z: 15, w: 0.20, y: 0.92 },
-    { id: 'bag', label: '包袋', z: 40, w: 0.26, y: 0.47 },
-    { id: 'acc', label: '配饰', z: 50, w: 0.20, y: 0.15 }
+    { id: 'top', label: '上装', z: 20, w: 0.30, y: 0.30 },
+    { id: 'bottom', label: '下装', z: 10, w: 0.26, y: 0.62 },
+    { id: 'dress', label: '裙装', z: 12, w: 0.36, y: 0.45 },
+    { id: 'outer', label: '外套', z: 30, w: 0.34, y: 0.34 },
+    { id: 'shoes', label: '鞋', z: 15, w: 0.20, y: 0.95 },
+    { id: 'bag', label: '包袋', z: 40, w: 0.24, y: 0.47 },
+    { id: 'acc', label: '配饰', z: 50, w: 0.14, y: 0.16 }
   ];
+
+  // 底图（立绘）单独放宽到 1800 保清晰度；衣服图仍限 900 控制内存。
+  var MAX_BASE_DIM = 1800;
 
   function catOf(id) {
     for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
@@ -887,7 +894,7 @@
   /* ---------- 立绘 ---------- */
 
   async function setBase(file) {
-    var canvas = await blobToCanvas(file, 1400);
+    var canvas = await blobToCanvas(file, MAX_BASE_DIM);
     var kx = canvas.width / state.stageW;
     var ky = canvas.height / state.stageH;
     state.base = { name: cleanName(file.name), canvas: canvas };
@@ -1222,7 +1229,7 @@
     state.filter = 'all';
 
     if (baseRec && baseRec.blob) {
-      var canvas = await blobToCanvas(baseRec.blob, 1400);
+      var canvas = await blobToCanvas(baseRec.blob, MAX_BASE_DIM);
       state.base = { name: baseRec.name, canvas: canvas };
       state.stageW = canvas.width;
       state.stageH = canvas.height;
