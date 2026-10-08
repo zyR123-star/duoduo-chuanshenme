@@ -1,14 +1,17 @@
 {
   "name": "多多今天穿什么",
   "short_name": "多多穿搭",
+  "description": "多多的手机换装台，衣橱存在本机，离线可用",
+  "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f3f5fb",
-  "theme_color": "#f3f5fb",
+  "orientation": "portrait-primary",
+  "background_color": "#fff8fb",
+  "theme_color": "#4F6EF7",
   "icons": [
-    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }
