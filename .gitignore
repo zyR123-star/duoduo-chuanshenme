@@ -1,0 +1,9 @@
+# 私人素材，不进公开仓库
+assets/reference/
+assets/raw/
+assets/screenshots/
+
+# 系统杂物
+Thumbs.db
+desktop.ini
+*.lnk

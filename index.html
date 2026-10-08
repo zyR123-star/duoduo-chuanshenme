@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="多多今天穿什么" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#f3f5fb" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#171a24" media="(prefers-color-scheme: dark)" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="assets/icon-180.png" />
+<link rel="icon" href="assets/icon-192.png" />
+<title>多多今天穿什么</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><span class="ico" data-icon="shirt"></span></span>
+      <div class="brand-text">
+        <h1>多多今天穿什么</h1>
+        <p id="brandSub">衣橱还是空的</p>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btnSave"><span class="ico" data-icon="sparkles"></span>保存</button>
+  </header>
+
+  <main class="stage-area">
+    <canvas id="stage" width="900" height="1200"></canvas>
+  </main>
+
+  <nav class="dock">
+    <button class="dock-btn" data-open="wardrobe"><span class="ico" data-icon="shirt"></span>衣橱</button>
+    <button class="dock-btn" data-open="adjust"><span class="ico" data-icon="sliders"></span>调整</button>
+    <button class="dock-btn" data-open="tools"><span class="ico" data-icon="eraser"></span>抠图</button>
+    <button class="dock-btn" data-open="base"><span class="ico" data-icon="user-round"></span>立绘</button>
+  </nav>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+
+<section class="sheet" id="sheetWardrobe" aria-hidden="true">
+  <header class="sheet-head">
+    <h2>衣橱</h2>
+    <button class="icon-btn" data-close aria-label="关闭"><span class="ico" data-icon="x"></span></button>
+  </header>
+  <div class="cat-tabs" id="catTabs"></div>
+  <div class="sheet-body">
+    <p class="meta" id="wardrobeEmpty">还没有衣服，先导入</p>
+    <div class="grid" id="wardrobeGrid"></div>
+  </div>
+  <footer class="sheet-foot">
+    <button class="btn btn-wide" id="btnAddClothes"><span class="ico" data-icon="image-plus"></span>导入衣服</button>
+  </footer>
+</section>
+
+<section class="sheet" id="sheetAdjust" aria-hidden="true">
+  <header class="sheet-head">
+    <h2>调整</h2>
+    <button class="icon-btn" data-close aria-label="关闭"><span class="ico" data-icon="x"></span></button>
+  </header>
+  <div class="sheet-body">
+    <p class="meta" id="adjustName">没有选中衣服</p>
+    <label class="field"><span>大小 <b id="scaleVal">—</b></span><input type="range" id="scale" min="5" max="400" step="1" value="100" /></label>
+    <label class="field"><span>转动 <b id="rotVal">—</b></span><input type="range" id="rot" min="-180" max="180" step="1" value="0" /></label>
+    <label class="field"><span>透明度 <b id="opacityVal">—</b></span><input type="range" id="opacity" min="5" max="100" step="1" value="100" /></label>
+    <div class="row">
+      <button class="btn btn-wide" id="btnFlip"><span class="ico" data-icon="flip"></span>左右翻转</button>
+      <button class="btn btn-wide" id="btnUnwear"><span class="ico" data-icon="hanger"></span>脱下来</button>
+    </div>
+    <label class="field"><span>归到哪一类</span><select id="catSelect"></select></label>
+    <button class="btn btn-danger btn-wide" id="btnDelete"><span class="ico" data-icon="trash"></span>从衣橱删除</button>
+  </div>
+</section>
+
+<section class="sheet" id="sheetTools" aria-hidden="true">
+  <header class="sheet-head">
+    <h2>抠图</h2>
+    <button class="icon-btn" data-close aria-label="关闭"><span class="ico" data-icon="x"></span></button>
+  </header>
+  <div class="sheet-body">
+    <div class="segmented" id="toolSeg">
+      <button class="seg-btn is-on" data-tool="move">移动</button>
+      <button class="seg-btn" data-tool="erase">擦掉</button>
+      <button class="seg-btn" data-tool="restore">补回</button>
+    </div>
+    <label class="field" id="brushField"><span>笔刷 <b id="brushVal">60</b></span><input type="range" id="brush" min="8" max="240" step="2" value="60" /></label>
+    <div class="row">
+      <button class="btn btn-wide" id="btnPick"><span class="ico" data-icon="pipette"></span>吸取底色</button>
+      <button class="btn btn-wide" id="btnKeyClear"><span class="ico" data-icon="rotate-ccw"></span>还原原图</button>
+    </div>
+    <label class="field"><span>容差 <b id="tolVal">40</b></span><input type="range" id="tol" min="0" max="180" step="1" value="40" /></label>
+  </div>
+</section>
+
+<section class="sheet" id="sheetBase" aria-hidden="true">
+  <header class="sheet-head">
+    <h2>多多的立绘</h2>
+    <button class="icon-btn" data-close aria-label="关闭"><span class="ico" data-icon="x"></span></button>
+  </header>
+  <div class="sheet-body">
+    <div class="row">
+      <button class="btn btn-wide" id="btnBase"><span class="ico" data-icon="image-plus"></span>导入立绘</button>
+      <button class="btn btn-wide" id="btnBaseClear"><span class="ico" data-icon="trash"></span>移除</button>
+    </div>
+    <p class="meta" id="baseMeta">还没有立绘</p>
+    <hr />
+    <h3>衣橱备份</h3>
+    <div class="row">
+      <button class="btn btn-wide" id="btnBackup"><span class="ico" data-icon="download"></span>导出</button>
+      <button class="btn btn-wide" id="btnRestore"><span class="ico" data-icon="upload"></span>导入</button>
+    </div>
+  </div>
+</section>
+
+<input id="inputClothes" type="file" accept="image/*" multiple hidden />
+<input id="inputBase" type="file" accept="image/*" hidden />
+<input id="inputRestore" type="file" accept="application/json,.json" hidden />
+
+<script src="app.js"></script>
+</body>
+</html>
