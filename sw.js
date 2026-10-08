@@ -1,6 +1,6 @@
 /* 多多今天穿什么 · 离线缓存
    改动页面文件后把 CACHE 的版本号加一，旧缓存会在下次访问时自动清掉。 */
-var CACHE = 'duoduo-2026-10-08-2';
+var CACHE = 'duoduo-2026-10-08-3';
 
 var ASSETS = [
   './',
@@ -8,6 +8,7 @@ var ASSETS = [
   'styles.css',
   'app.js',
   'manifest.webmanifest',
+  'assets/default-base.webp',
   'assets/icon.svg',
   'assets/icon-180.png',
   'assets/icon-192.png',

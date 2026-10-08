@@ -33,14 +33,14 @@
   /* ---------- 品类：决定默认位置和前后顺序 ---------- */
 
   // w 是衣服宽度占舞台宽度的比例，y 是落点占舞台高度的比例。
-  // 这组数字按最终立绘（1344x1792）用中轴亮度实测校准：
-  //   T 恤 0.208-0.382、短裤到 0.509、膝 0.695、踝 0.90、肩宽占画面宽 0.28。
+  // 按默认立绘（default-base.webp，1344x1792）用中轴亮度实测校准：
+  //   吊带+短裤 0.265-0.510、膝约 0.70、踝 0.90、脚底 0.99，人物横向居中。
   // 换立绘时这几个值要跟着重量。
   var CATS = [
-    { id: 'top', label: '上装', z: 20, w: 0.30, y: 0.30 },
-    { id: 'bottom', label: '下装', z: 10, w: 0.26, y: 0.62 },
-    { id: 'dress', label: '裙装', z: 12, w: 0.36, y: 0.45 },
-    { id: 'outer', label: '外套', z: 30, w: 0.34, y: 0.34 },
+    { id: 'top', label: '上装', z: 20, w: 0.30, y: 0.35 },
+    { id: 'bottom', label: '下装', z: 10, w: 0.26, y: 0.70 },
+    { id: 'dress', label: '裙装', z: 12, w: 0.36, y: 0.47 },
+    { id: 'outer', label: '外套', z: 30, w: 0.34, y: 0.37 },
     { id: 'shoes', label: '鞋', z: 15, w: 0.20, y: 0.95 },
     { id: 'bag', label: '包袋', z: 40, w: 0.24, y: 0.47 },
     { id: 'acc', label: '配饰', z: 50, w: 0.14, y: 0.16 }
@@ -48,6 +48,9 @@
 
   // 底图（立绘）单独放宽到 1800 保清晰度；衣服图仍限 900 控制内存。
   var MAX_BASE_DIM = 1800;
+
+  // 出厂自带的默认立绘：库里没有自定义立绘时用它，首次打开就有得用
+  var DEFAULT_BASE = 'assets/default-base.webp';
 
   function catOf(id) {
     for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
@@ -1006,6 +1009,28 @@
 
   /* ---------- 立绘 ---------- */
 
+  function applyBaseCanvas(canvas, name) {
+    state.base = { name: name, canvas: canvas };
+    state.stageW = canvas.width;
+    state.stageH = canvas.height;
+    stage.width = state.stageW;
+    stage.height = state.stageH;
+    $('baseMeta').textContent = name;
+  }
+
+  async function loadDefaultBase() {
+    try {
+      var res = await fetch(DEFAULT_BASE);
+      if (!res.ok) throw new Error('默认立绘读取失败');
+      var canvas = await blobToCanvas(await res.blob(), MAX_BASE_DIM);
+      applyBaseCanvas(canvas, '默认立绘');
+    } catch (err) {
+      console.warn(err);
+      state.base = null;
+      $('baseMeta').textContent = '还没有立绘';
+    }
+  }
+
   async function setBase(file) {
     var canvas = await blobToCanvas(file, MAX_BASE_DIM);
     var kx = canvas.width / state.stageW;
@@ -1343,9 +1368,8 @@
   });
 
   $('btnBaseClear').addEventListener('click', async function () {
-    state.base = null;
-    $('baseMeta').textContent = '还没有立绘';
     await dbRemove('meta', 'base');
+    await loadDefaultBase();
     requestRender();
   });
 
@@ -1500,15 +1524,9 @@
 
     if (baseRec && baseRec.blob) {
       var canvas = await blobToCanvas(baseRec.blob, MAX_BASE_DIM);
-      state.base = { name: baseRec.name, canvas: canvas };
-      state.stageW = canvas.width;
-      state.stageH = canvas.height;
-      stage.width = state.stageW;
-      stage.height = state.stageH;
-      $('baseMeta').textContent = baseRec.name;
-    } else if (!isReload) {
-      state.base = null;
-      $('baseMeta').textContent = '还没有立绘';
+      applyBaseCanvas(canvas, baseRec.name);
+    } else {
+      await loadDefaultBase();
     }
 
     for (var i = 0; i < state.garments.length; i++) {
